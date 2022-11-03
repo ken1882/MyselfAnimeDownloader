@@ -4,6 +4,7 @@ import os
 import json
 import datetime
 from concurrent.futures.thread import ThreadPoolExecutor
+import mbsock
 
 import psutil
 from PyQt5 import QtCore
@@ -12,21 +13,6 @@ from myself_tools import get_weekly_update, get_end_anime_list, get_anime_data, 
     requests_ChunkedEncodingError, requests_ConnectionError, download_request, get_total_page, get_now_page_anime_data, \
     download_end_anime_preview, badname, check_version, cpu_memory, myself_login, get_login_select, search_animate, \
     record
-
-
-CDNHosts = (
-    'https://vpx34.myself-bbs.com',
-    'https://vpx32.myself-bbs.com',
-    'https://vpx08.myself-bbs.com',
-    'https://vpx05.myself-bbs.com',
-    'https://vpx06.myself-bbs.com',
-    'https://vpx07.myself-bbs.com',
-    'https://vpx02.myself-bbs.com',
-    'https://vpx09.myself-bbs.com',
-    'https://vpx13.myself-bbs.com',
-    'https://vpx15.myself-bbs.com',
-    'https://vpx16.myself-bbs.com',
-)
 
 class WeeklyUpdate(QtCore.QThread):
     """
@@ -249,20 +235,24 @@ class DownloadVideo(QtCore.QThread):
             error_value += 1
             time.sleep(5)
 
+    def get_download_target(self):
+        seg = self.data['url'].split('/')
+        vid,seq = seg[-2],seg[-1]
+        return mbsock.get_cdn(vid, seq)
+
     def get_m3u8_data(self, res=None):
         """
         取得 m3u8 資料。
         """
-        global CDNHosts
         index = 0
         error_value = 1
         if res:
             url = res['host'][index]['host'] + res['video']['720p']
         else:
-            seg = self.data['url'].split('/')
-            vid,seq = seg[-2],seg[-1]
-            self.data['data_host'] = f"{CDNHosts[index]}/{vid}/{seq}"
-            url = f"{self.data['data_host']}/720p.m3u8"
+            url = self.get_download_target()
+            seg = url.split('/')
+            self.data['data_host'] = f"https://{seg[2]}/{seg[3]}/{seg[4]}"
+            
         self.data.update({'status': '取得影片資料中'})
         while True:
             try:
@@ -278,13 +268,9 @@ class DownloadVideo(QtCore.QThread):
             self.data.update({'status': f'取得影片資料中(失敗{error_value}次)'})
             self.download_video.emit(self.data)
             error_value += 1
-            index += 1
-            if index == len(CDNHosts):
-                index = 0
-                print("[WARNING] Cycled all CDN but non has data, will start again")
-            self.data['data_host'] = f"{CDNHosts[index]}/{vid}/{seq}"
-            print(f"Failed to fetch {url}, switching to {self.data['data_host']}")
-            url = f"{self.data['data_host']}/720p.m3u8"
+            old_url = url
+            url = self.get_download_target()
+            print(f"Failed to fetch {old_url}, switching to {url}")
             time.sleep(5)
 
     def run(self):
@@ -343,14 +329,8 @@ class DownloadVideo(QtCore.QThread):
         """
         global CDNHosts
         host_value = 0
-        if res:
-            url = f"{host[host_value]['host']}{res['video']['720p'].split('.')[0]}_{i:03d}.ts"
-        else:
-            for j, h in enumerate(CDNHosts):
-                if host[:10] == h[:10]:
-                    host_value = j
-                    break
-            url = f"{host}/720p_{i:03d}.ts"
+        url = f"{self.data['data_host']}/720p_{i:03d}.ts"
+
         ok = False
         while True:
             try:
@@ -395,16 +375,11 @@ class DownloadVideo(QtCore.QThread):
                 print('BaseException', url)
                 # print(error, url)
                 # print('不明的錯: 暫時先換分流照做')
-            host_value += 1
-            if host_value == len(CDNHosts):
-                host_value = 0
-                print("[WARNING] Cycled all CDN but non has data, will start again")
             
-            seg = self.data['url'].split('/')
-            vid,seq = seg[-2],seg[-1]
-            self.data['data_host'] = f"{CDNHosts[host_value]}/{vid}/{seq}"
-            print(f"Failed to fetch {url}, switching to {self.data['data_host']}")
-            url = f"{self.data['data_host']}/720p.m3u8"
+            h = self.get_download_target()
+            seg = h.split('/')
+            self.data['data_host'] = f"https://{seg[2]}/{seg[3]}/{seg[4]}"
+            url = f"{self.data['data_host']}/720p_{i:03d}.ts"
             time.sleep(3)
         self.ts_time = time.time()
 
