@@ -235,13 +235,19 @@ class DownloadVideo(QtCore.QThread):
             error_value += 1
             time.sleep(5)
 
-    def get_m3u8_data(self, res):
+    def get_m3u8_data(self, res=None):
         """
         取得 m3u8 資料。
         """
         index = 0
         error_value = 1
-        url = res['host'][index]['host'] + res['video']['720p']
+        if res:
+            url = res['host'][index]['host'] + res['video']['720p']
+        else:
+            seg = self.data['url'].split('/')
+            vid,seq = seg[-2],seg[-1]
+            self.data['data_host'] = f"https://vpx34.myself-bbs.com/{vid}/{seq}"
+            url = f"{self.data['data_host']}/720p.m3u8"
         self.data.update({'status': '取得影片資料中'})
         while True:
             try:
@@ -257,24 +263,27 @@ class DownloadVideo(QtCore.QThread):
             self.data.update({'status': f'取得影片資料中(失敗{error_value}次)'})
             self.download_video.emit(self.data)
             error_value += 1
-            if index == len(res['host']) - 1:
-                index = 0
-            else:
-                index += 1
-            url = res['host'][index]['host'] + res['video']['720p']
+            if res:
+                if index == host_index:
+                    index = 0
+                else:
+                    index += 1
+                url = res['host'][index]['host'] + res['video']['720p']
             time.sleep(5)
 
     def run(self):
         record()
         self.turn_me()
         if not self.exit:
-            res = self.get_host_video_data()
-            m3u8_data = self.get_m3u8_data(res)
+            # res = self.get_host_video_data()
+            # m3u8_data = self.get_m3u8_data(res)
+            m3u8_data = self.get_m3u8_data()
             m3u8_count = m3u8_data.count('EXTINF')
-            host = sorted(res['host'], key=lambda i: i.get('weight'), reverse=True)
+            # host = sorted(res['host'], key=lambda i: i.get('weight'), reverse=True)
             executor = ThreadPoolExecutor(max_workers=self.anime.speed_value)
             for i in range(self.data['video_ts'], m3u8_count):
-                executor.submit(self.video, i, res, host, m3u8_count)
+                # executor.submit(self.video, i, res, host, m3u8_count)
+                executor.submit(self.video, i, None, self.data['data_host'], m3u8_count)
             while True:
                 if self.data['video_ts'] == m3u8_count or self.exit:
                     break
@@ -317,7 +326,10 @@ class DownloadVideo(QtCore.QThread):
         請求 URL 下載影片。
         """
         host_value = 0
-        url = f"{host[host_value]['host']}{res['video']['720p'].split('.')[0]}_{i:03d}.ts"
+        if res:
+            url = f"{host[host_value]['host']}{res['video']['720p'].split('.')[0]}_{i:03d}.ts"
+        else:
+            url = f"{host}/720p_{i:03d}.ts"
         ok = False
         while True:
             try:
@@ -362,11 +374,12 @@ class DownloadVideo(QtCore.QThread):
                 print('BaseException', url)
                 # print(error, url)
                 # print('不明的錯: 暫時先換分流照做')
-            if host_value == len(host) - 1:
-                host_value = 0
-            else:
-                host_value += 1
-            url = f"{host[host_value]['host']}{res['video']['720p'].split('.')[0]}_{i:03d}.ts"
+            # if host:
+            #     if host_value == len(host) - 1:
+            #         host_value = 0
+            #     else:
+            #         host_value += 1
+            #     url = f"{host[host_value]['host']}{res['video']['720p'].split('.')[0]}_{i:03d}.ts"
             time.sleep(3)
         self.ts_time = time.time()
 
