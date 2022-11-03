@@ -14,6 +14,20 @@ from myself_tools import get_weekly_update, get_end_anime_list, get_anime_data, 
     record
 
 
+CDNHosts = (
+    'https://vpx34.myself-bbs.com',
+    'https://vpx32.myself-bbs.com',
+    'https://vpx08.myself-bbs.com',
+    'https://vpx05.myself-bbs.com',
+    'https://vpx06.myself-bbs.com',
+    'https://vpx07.myself-bbs.com',
+    'https://vpx02.myself-bbs.com',
+    'https://vpx09.myself-bbs.com',
+    'https://vpx13.myself-bbs.com',
+    'https://vpx15.myself-bbs.com',
+    'https://vpx16.myself-bbs.com',
+)
+
 class WeeklyUpdate(QtCore.QThread):
     """
     爬每周動漫資訊。
@@ -239,6 +253,7 @@ class DownloadVideo(QtCore.QThread):
         """
         取得 m3u8 資料。
         """
+        global CDNHosts
         index = 0
         error_value = 1
         if res:
@@ -246,7 +261,7 @@ class DownloadVideo(QtCore.QThread):
         else:
             seg = self.data['url'].split('/')
             vid,seq = seg[-2],seg[-1]
-            self.data['data_host'] = f"https://vpx34.myself-bbs.com/{vid}/{seq}"
+            self.data['data_host'] = f"{CDNHosts[index]}/{vid}/{seq}"
             url = f"{self.data['data_host']}/720p.m3u8"
         self.data.update({'status': '取得影片資料中'})
         while True:
@@ -263,12 +278,13 @@ class DownloadVideo(QtCore.QThread):
             self.data.update({'status': f'取得影片資料中(失敗{error_value}次)'})
             self.download_video.emit(self.data)
             error_value += 1
-            if res:
-                if index == host_index:
-                    index = 0
-                else:
-                    index += 1
-                url = res['host'][index]['host'] + res['video']['720p']
+            index += 1
+            if index == len(CDNHosts):
+                index = 0
+                print("[WARNING] Cycled all CDN but non has data, will start again")
+            self.data['data_host'] = f"{CDNHosts[index]}/{vid}/{seq}"
+            print(f"Failed to fetch {url}, switching to {self.data['data_host']}")
+            url = f"{self.data['data_host']}/720p.m3u8"
             time.sleep(5)
 
     def run(self):
@@ -325,10 +341,15 @@ class DownloadVideo(QtCore.QThread):
         """
         請求 URL 下載影片。
         """
+        global CDNHosts
         host_value = 0
         if res:
             url = f"{host[host_value]['host']}{res['video']['720p'].split('.')[0]}_{i:03d}.ts"
         else:
+            for j, h in enumerate(CDNHosts):
+                if host[:10] == h[:10]:
+                    host_value = j
+                    break
             url = f"{host}/720p_{i:03d}.ts"
         ok = False
         while True:
@@ -374,12 +395,16 @@ class DownloadVideo(QtCore.QThread):
                 print('BaseException', url)
                 # print(error, url)
                 # print('不明的錯: 暫時先換分流照做')
-            # if host:
-            #     if host_value == len(host) - 1:
-            #         host_value = 0
-            #     else:
-            #         host_value += 1
-            #     url = f"{host[host_value]['host']}{res['video']['720p'].split('.')[0]}_{i:03d}.ts"
+            host_value += 1
+            if host_value == len(CDNHosts):
+                host_value = 0
+                print("[WARNING] Cycled all CDN but non has data, will start again")
+            
+            seg = self.data['url'].split('/')
+            vid,seq = seg[-2],seg[-1]
+            self.data['data_host'] = f"{CDNHosts[host_value]}/{vid}/{seq}"
+            print(f"Failed to fetch {url}, switching to {self.data['data_host']}")
+            url = f"{self.data['data_host']}/720p.m3u8"
             time.sleep(3)
         self.ts_time = time.time()
 
