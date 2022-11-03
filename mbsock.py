@@ -16,6 +16,7 @@ def get_cdn(vid, seg):
     except Exception:
         print("[ERROR] Unable to get CDN:")
         print(r)
+    ws.close()
     return f"https:{ret}"
 
 def is_cdn_alive(vid):
